@@ -1,0 +1,11 @@
+(* MLB for the sml-yaml library. The vendored sml-parsec core is brought in so
+ * the dependency is wired up even though the YAML parser is a hand-rolled
+ * line/indentation-based recursive descent (more robust for YAML's
+ * whitespace-significant block style). *)
+local
+  $(SML_LIB)/basis/basis.mlb
+  ../sml-parsec/parsec.mlb
+in
+  yaml.sig
+  yaml.sml
+end

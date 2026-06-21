@@ -1,0 +1,4 @@
+package github.com/sjqtentacles/sml-yaml
+require {
+  github.com/sjqtentacles/sml-parsec
+}
