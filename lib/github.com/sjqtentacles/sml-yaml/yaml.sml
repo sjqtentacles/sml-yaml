@@ -576,4 +576,105 @@ struct
     | Seq _ => rtrim (emit (v, 0))
     | Map _ => rtrim (emit (v, 0))
     | _ => scalarToString v
+
+  (* Indentation-step-configurable emitter (mirrors `emit` but uses `step`
+     spaces per level instead of a fixed 2). *)
+  fun emitN (step, v, ind) =
+    case v of
+      Seq [] => indentStr ind ^ "[]\n"
+    | Map [] => indentStr ind ^ "{}\n"
+    | Seq xs => String.concat (List.map (fn x => emitSeqItemN (step, x, ind)) xs)
+    | Map kvs => String.concat (List.map (fn kv => emitMapEntryN (step, kv, ind)) kvs)
+    | _ => indentStr ind ^ scalarToString v ^ "\n"
+
+  and emitSeqItemN (step, x, ind) =
+    if isScalar x orelse isEmptyColl x then
+      indentStr ind ^ "- " ^ scalarOrEmpty x ^ "\n"
+    else
+      indentStr ind ^ "-\n" ^ emitN (step, x, ind + step)
+
+  and emitMapEntryN (step, (k, v), ind) =
+    let val key = if needsQuote k then quoteStr k else k in
+      if isScalar v orelse isEmptyColl v then
+        indentStr ind ^ key ^ ": " ^ scalarOrEmpty v ^ "\n"
+      else
+        indentStr ind ^ key ^ ":\n" ^ emitN (step, v, ind + step)
+    end
+
+  fun toStringIndent step v =
+    case v of
+      Seq [] => "[]"
+    | Map [] => "{}"
+    | Seq _ => rtrim (emitN (step, v, 0))
+    | Map _ => rtrim (emitN (step, v, 0))
+    | _ => scalarToString v
+
+  (* ---- JSON bridge -------------------------------------------------- *)
+
+  datatype json
+    = JNull
+    | JBool  of bool
+    | JInt   of IntInf.int
+    | JFloat of real
+    | JStr   of string
+    | JArr   of json list
+    | JObj   of (string * json) list
+
+  fun toJson v =
+    case v of
+      Null    => JNull
+    | Bool b  => JBool b
+    | Int i   => JInt i
+    | Float r => JFloat r
+    | Str s   => JStr s
+    | Seq xs  => JArr (List.map toJson xs)
+    | Map kvs => JObj (List.map (fn (k, v) => (k, toJson v)) kvs)
+
+  fun fromJson j =
+    case j of
+      JNull    => Null
+    | JBool b  => Bool b
+    | JInt i   => Int i
+    | JFloat r => Float r
+    | JStr s   => Str s
+    | JArr xs  => Seq (List.map fromJson xs)
+    | JObj kvs => Map (List.map (fn (k, v) => (k, fromJson v)) kvs)
+
+  (* SML prints a leading "~" for negative numbers; JSON requires "-". *)
+  fun fixSign s =
+    if String.size s > 0 andalso String.sub (s, 0) = #"~"
+    then "-" ^ String.extract (s, 1, NONE) else s
+
+  fun jsonQuote s =
+    let
+      fun esc c =
+        case c of
+          #"\"" => "\\\""
+        | #"\\" => "\\\\"
+        | #"\n" => "\\n"
+        | #"\t" => "\\t"
+        | #"\r" => "\\r"
+        | #"\b" => "\\b"
+        | #"\f" => "\\f"
+        | _ =>
+            if Char.ord c < 0x20 then
+              let val h = Int.fmt StringCvt.HEX (Char.ord c)
+              in "\\u" ^ StringCvt.padLeft #"0" 4 h end
+            else String.str c
+    in "\"" ^ String.concat (List.map esc (String.explode s)) ^ "\"" end
+
+  fun jsonToString j =
+    case j of
+      JNull    => "null"
+    | JBool b  => if b then "true" else "false"
+    | JInt i   => fixSign (IntInf.toString i)
+    | JFloat r => fixSign (Real.toString r)
+    | JStr s   => jsonQuote s
+    | JArr xs  => "[" ^ String.concatWith "," (List.map jsonToString xs) ^ "]"
+    | JObj kvs =>
+        "{" ^ String.concatWith ","
+                (List.map (fn (k, v) => jsonQuote k ^ ":" ^ jsonToString v) kvs)
+        ^ "}"
+
+  fun toJsonString v = jsonToString (toJson v)
 end

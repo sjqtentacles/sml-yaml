@@ -59,6 +59,16 @@ sig
   val parse     : string -> t        (* single document; raises Fail on error *)
   val parseAll  : string -> t list   (* multi-document; split on "---" lines  *)
   val toString  : t -> string        (* re-parseable serializer               *)
+  val toStringIndent : int -> t -> string   (* configurable indent step       *)
+
+  (* JSON bridge (self-contained AST; no sml-json dependency). *)
+  datatype json
+    = JNull | JBool of bool | JInt of IntInf.int | JFloat of real
+    | JStr of string | JArr of json list | JObj of (string * json) list
+  val toJson       : t -> json
+  val fromJson     : json -> t
+  val jsonToString : json -> string  (* compact, deterministic JSON text      *)
+  val toJsonString : t -> string     (* = jsonToString o toJson               *)
 end
 structure Yaml :> YAML
 ```
@@ -100,6 +110,27 @@ val [doc1, doc2] = Yaml.parseAll "---\na: 1\n---\nb: 2"
 (* round-trip: parse (toString v) is structurally equal to v *)
 val v = Yaml.Map [("name", Yaml.Str "Alice"), ("age", Yaml.Int 30)]
 val () = if Yaml.parse (Yaml.toString v) = v then () else raise Fail "oops"
+```
+
+### JSON bridge & pretty-printing
+
+`toJson`/`fromJson` map the YAML value AST onto a self-contained JSON AST 1:1
+(this library has no `sml-json` dependency). YAML scalar typing is carried over
+verbatim: `null`→`JNull`, `true`/`false`→`JBool`, integers→`JInt`,
+floats→`JFloat`, strings→`JStr`; sequences→`JArr` (arrays) and mappings→`JObj`
+(objects, key order preserved). `jsonToString` emits compact JSON with no
+insignificant whitespace (integer/string output is byte-identical across
+compilers). `toStringIndent n` is `toString` with `n` spaces per nesting level.
+
+```sml
+val doc = Yaml.parse "name: Alice\nage: 30\nactive: true\ntags:\n  - x\n  - y\nnote: ~"
+Yaml.toJsonString doc
+  (* {"name":"Alice","age":30,"active":true,"tags":["x","y"],"note":null} *)
+
+Yaml.toStringIndent 4 (Yaml.parse "a:\n  b: 1")   (* 4-space indentation *)
+
+(* JSON -> YAML AST -> JSON round-trips structurally *)
+val same = Yaml.fromJson (Yaml.toJson doc)
 ```
 
 ## Testing

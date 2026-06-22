@@ -162,6 +162,57 @@ struct
       val () = checkRaises "err-unterminated-sq" (fn () => Y.parse "'oops")
       val () = checkRaises "err-unterminated-flow-seq" (fn () => Y.parse "[1, 2")
       val () = checkRaises "err-unterminated-flow-map" (fn () => Y.parse "{a: 1")
+
+      (* 7. toStringIndent *)
+      val () = section "toStringIndent"
+      val nested =
+        Y.Map [("person",
+          Y.Map [("name", Y.Str "Bob"),
+                 ("scores", Y.Seq [Y.Int 1, Y.Int 2])])]
+      val () = checkString "indent 2 == toString"
+                 (Y.toString nested, Y.toStringIndent 2 nested)
+      val () = checkString "indent 4 layout"
+                 ("person:\n    name: Bob\n    scores:\n        - 1\n        - 2\n",
+                  Y.toStringIndent 4 nested)
+      val () =
+        let val v2 = Y.parse (Y.toStringIndent 4 nested)
+        in checkVal "indent 4 re-parses" (v2, nested) end
+
+      (* 8. JSON bridge *)
+      val () = section "json bridge"
+      (* scalar typing carried over verbatim (json holds a real, so it is not
+         an equality type: compare via constructor tag + jsonToString). *)
+      fun jtag j =
+        case j of
+          Y.JNull => "null" | Y.JBool _ => "bool" | Y.JInt _ => "int"
+        | Y.JFloat _ => "float" | Y.JStr _ => "str"
+        | Y.JArr _ => "arr" | Y.JObj _ => "obj"
+      val () = checkString "type true"  ("bool", jtag (Y.toJson (Y.Bool true)))
+      val () = checkString "type false" ("bool", jtag (Y.toJson (Y.Bool false)))
+      val () = checkString "type null"  ("null", jtag (Y.toJson Y.Null))
+      val () = checkString "type int"   ("int", jtag (Y.toJson (Y.Int 123)))
+      val () = checkString "type float" ("float", jtag (Y.toJson (Y.Float 1.5)))
+      val () = checkString "type str"   ("str", jtag (Y.toJson (Y.Str "str")))
+      val () = checkString "json true"  ("true", Y.jsonToString (Y.toJson (Y.Bool true)))
+      val () = checkString "json false" ("false", Y.jsonToString (Y.toJson (Y.Bool false)))
+      val () = checkString "json null"  ("null", Y.jsonToString (Y.toJson Y.Null))
+      val () = checkString "json int"   ("123", Y.jsonToString (Y.toJson (Y.Int 123)))
+      val () = checkString "json float" ("1.5", Y.jsonToString (Y.toJson (Y.Float 1.5)))
+      val () = checkString "json str"   ("\"str\"", Y.jsonToString (Y.toJson (Y.Str "str")))
+      (* a known small YAML maps to a known JSON string (no floats: exact bytes) *)
+      val doc = Y.parse "name: Alice\nage: 30\nactive: true\ntags:\n  - x\n  - y\nnote: ~"
+      val () = checkString "yaml -> json string"
+                 ("{\"name\":\"Alice\",\"age\":30,\"active\":true,\"tags\":[\"x\",\"y\"],\"note\":null}",
+                  Y.toJsonString doc)
+      val () = checkString "negative int json" ("-7", Y.toJsonString (Y.Int (~7)))
+      val () = checkString "json string escapes" ("\"a\\nb\"", Y.toJsonString (Y.Str "a\nb"))
+      (* round-trip a representative doc YAML -> JSON -> YAML preserving structure *)
+      val rep =
+        Y.Map [("n", Y.Int 1), ("f", Y.Float 1.5), ("b", Y.Bool false),
+               ("z", Y.Null), ("s", Y.Str "hi"),
+               ("arr", Y.Seq [Y.Int 1, Y.Str "two", Y.Bool true]),
+               ("obj", Y.Map [("k", Y.Str "v")])]
+      val () = checkVal "fromJson o toJson = id" (Y.fromJson (Y.toJson rep), rep)
     in
       Harness.run ()
     end
